@@ -9,6 +9,10 @@ import com.mahmoudibrahem.taskii.model.CheckItem
 interface CheckItemDao {
     @Upsert
     suspend fun upsertCheckItem(checkItem: CheckItem)
+
     @Query("SELECT * FROM CheckItem WHERE taskId=:taskId")
     suspend fun getCheckItemsOfTask(taskId: Int): List<CheckItem>
+
+    @Query("DELETE FROM CheckItem WHERE taskId=:taskId")
+    suspend fun deleteOldCheckList(taskId: Int)
 }

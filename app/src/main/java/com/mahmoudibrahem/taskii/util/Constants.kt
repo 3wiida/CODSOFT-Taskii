@@ -7,7 +7,7 @@ object Constants {
     const val NAMING_USER_SCREEN = "naming_user_screen"
     const val HOME_SCREEN_ROUTE="home_screen_route"
     const val SEARCH_SCREEN_ROUTE="search_screen_route"
-    const val CREATE_TASK_SCREEN_ROUTE="create_task_screen_route"
+    const val CREATE_TASK_SCREEN_ROUTE="create_task_screen_route/{task_id}"
     const val ANALYTICS_SCREEN_ROUTE="analytics_screen_route"
     const val TASK_DETAILS_SCREEN_ROUTE="task_details_screen_route/{task_id}"
 

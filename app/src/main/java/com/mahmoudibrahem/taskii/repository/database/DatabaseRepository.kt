@@ -16,4 +16,6 @@ interface DatabaseRepository {
     suspend fun deleteTask(id: Int)
     suspend fun getCompletedTasks(): List<Task>
     suspend fun getUnCompletedTasks(): List<Task>
+    suspend fun deleteOldCheckList(taskId: Int)
+    suspend fun updateTask(task: Task, checkList: List<String>)
 }

@@ -24,10 +24,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,21 +36,36 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
 import com.mahmoudibrahem.taskii.R
 import com.mahmoudibrahem.taskii.ui.theme.AppMainColor
 import com.mahmoudibrahem.taskii.ui.theme.SfDisplay
 import com.mahmoudibrahem.taskii.ui.theme.TextFieldColor
-import com.mahmoudibrahem.taskii.util.Constants.BOTTOM_BAR_GRAPH_ROUTE
-import com.mahmoudibrahem.taskii.util.Constants.ONBOARDING_GRAPH_ROUTE
 
 @Composable
 fun UserNamingScreen(
     viewModel: UserNamingViewModel = hiltViewModel(),
-    navController: NavController
+    onNavigateToHomeScreen: () -> Unit = {}
+) {
+    val uiState by viewModel.uiState.collectAsState()
+    UserNamingScreenContent(
+        uiState = uiState,
+        onValueChanged = viewModel::onNameValueChanged,
+        onConfirmBtnClicked = {
+            viewModel.onConfirmBtnClicked()
+            onNavigateToHomeScreen()
+        }
+    )
+}
+
+@Composable
+fun UserNamingScreenContent(
+    uiState: UserNamingUIState,
+    onValueChanged: (String) -> Unit,
+    onConfirmBtnClicked: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -66,94 +79,122 @@ fun UserNamingScreen(
             )
             .scrollable(state = rememberScrollableState { it }, orientation = Orientation.Vertical)
     ) {
-        var name by remember { mutableStateOf("") }
-        val buttonColor = animateColorAsState(
-            targetValue = if (name.length > 2) AppMainColor else Color.LightGray,
-            animationSpec = tween(1000, easing = LinearEasing),
-            label = ""
+        Column(modifier = Modifier.align(Alignment.TopStart)) {
+            ScreenHeader()
+            NameEntrySection(username = uiState.username, onValueChanged = onValueChanged)
+        }
+        ConfirmSection(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            username = uiState.username,
+            onConfirmBtnClicked = onConfirmBtnClicked
         )
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.TopCenter),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Image(
-                painter = painterResource(id = R.drawable.taskii_icon),
-                contentDescription = null,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .size(120.dp),
-                alignment = Alignment.TopStart
-            )
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = stringResource(R.string.welcome_to_taskii),
-                fontFamily = SfDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 28.sp,
-                color = Color.Black,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 48.dp),
-                textAlign = TextAlign.Start
-            )
-            Text(
-                text = stringResource(R.string.naming_screen_body),
-                fontFamily = SfDisplay,
-                fontWeight = FontWeight.Normal,
-                fontSize = 16.sp,
-                color = Color(0xFF52465F),
-                modifier = Modifier.padding(bottom = 48.dp),
-                textAlign = TextAlign.Center
-            )
-            OutlinedTextField(
-                value = name,
-                onValueChange = { newName -> name = newName },
-                textStyle = TextStyle(fontFamily = SfDisplay),
-                placeholder = { Text(text = "Tap to enter your name", fontFamily = SfDisplay) },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = Color.Black,
-                    unfocusedTextColor = Color.Black,
-                    focusedBorderColor = TextFieldColor,
-                    unfocusedBorderColor = TextFieldColor,
-                    focusedPlaceholderColor = Color.Gray,
-                    unfocusedPlaceholderColor = Color.Gray,
-                    focusedContainerColor = TextFieldColor,
-                    unfocusedContainerColor = TextFieldColor
-                ),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(58.dp)
-                    .clip(RoundedCornerShape(16.dp)),
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
-            )
-        }
-        Button(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(48.dp)
-                .clip(RoundedCornerShape(16.dp)),
-            colors = ButtonDefaults.buttonColors(containerColor = buttonColor.value),
-            enabled = name.length > 3,
-            onClick = {
-                viewModel.saveUsername(name = name)
-                viewModel.saveOnboardingState()
-                navController.navigate(route = BOTTOM_BAR_GRAPH_ROUTE) {
-                    popUpTo(route = ONBOARDING_GRAPH_ROUTE) {
-                        inclusive = true
-                    }
-                }
-            }
-        ) {
-            Text(
-                text = "CONFIRM",
-                fontFamily = SfDisplay,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-        }
     }
+}
+
+@Composable
+private fun ScreenHeader(modifier: Modifier = Modifier) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Image(
+            modifier = Modifier
+                .fillMaxWidth()
+                .size(120.dp),
+            painter = painterResource(id = R.drawable.taskii_icon),
+            contentDescription = null,
+            alignment = Alignment.TopStart
+        )
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 48.dp),
+            text = stringResource(R.string.welcome_to_taskii),
+            fontFamily = SfDisplay,
+            fontWeight = FontWeight.Bold,
+            fontSize = 28.sp,
+            color = Color.Black,
+            textAlign = TextAlign.Start
+        )
+        Text(
+            modifier = Modifier.padding(bottom = 48.dp),
+            text = stringResource(R.string.naming_screen_body),
+            fontFamily = SfDisplay,
+            fontWeight = FontWeight.Normal,
+            fontSize = 16.sp,
+            color = Color(0xFF52465F),
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun NameEntrySection(
+    modifier: Modifier = Modifier,
+    username: String,
+    onValueChanged: (String) -> Unit
+) {
+    OutlinedTextField(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(58.dp)
+            .clip(RoundedCornerShape(16.dp)),
+        value = username,
+        onValueChange = onValueChanged,
+        textStyle = TextStyle(fontFamily = SfDisplay),
+        placeholder = {
+            Text(
+                text = stringResource(R.string.tap_to_enter_your_name),
+                fontFamily = SfDisplay
+            )
+        },
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedTextColor = Color.Black,
+            unfocusedTextColor = Color.Black,
+            focusedBorderColor = TextFieldColor,
+            unfocusedBorderColor = TextFieldColor,
+            focusedPlaceholderColor = Color.Gray,
+            unfocusedPlaceholderColor = Color.Gray,
+            focusedContainerColor = TextFieldColor,
+            unfocusedContainerColor = TextFieldColor
+        ),
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done)
+    )
+}
+
+@Composable
+private fun ConfirmSection(
+    username: String,
+    modifier: Modifier = Modifier,
+    onConfirmBtnClicked: () -> Unit
+) {
+    val buttonColor = animateColorAsState(
+        targetValue = if (username.length > 2) AppMainColor else Color.LightGray,
+        animationSpec = tween(1000, easing = LinearEasing),
+        label = ""
+    )
+    Button(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp)),
+        colors = ButtonDefaults.buttonColors(containerColor = buttonColor.value),
+        enabled = username.length > 3,
+        onClick = onConfirmBtnClicked
+    ) {
+        Text(
+            text = stringResource(R.string.confirm),
+            fontFamily = SfDisplay,
+            fontWeight = FontWeight.Bold,
+            fontSize = 16.sp
+        )
+    }
+}
+
+@Preview(showSystemUi = true)
+@Composable
+private fun UserNamingScreenPreview() {
+    UserNamingScreen()
 }

@@ -87,8 +87,16 @@ fun AnalyticsScreen(
         bottomBar = {
             AppBottomBar(
                 selectedScreen = 1,
-                onAddClicked = { navController.navigate(HomeScreens.CreateTask.route) },
-                onHomeClicked = { navController.navigate(HomeScreens.Home.route) }
+                onAddClicked = {
+                    navController.navigate(HomeScreens.CreateTask.route) {
+                        launchSingleTop = true
+                    }
+                },
+                onHomeClicked = {
+                    navController.navigate(HomeScreens.Home.route) {
+                        launchSingleTop = true
+                    }
+                }
             )
         }
     ) {
@@ -98,6 +106,8 @@ fun AnalyticsScreen(
                 .padding(top = 24.dp, start = 24.dp, end = 24.dp, bottom = 100.dp),
             horizontalAlignment = Alignment.Start
         ) {
+            var selectedIndex by remember { mutableIntStateOf(0) }
+
             Text(
                 text = "Dashboard",
                 fontFamily = SfDisplay,
@@ -105,29 +115,91 @@ fun AnalyticsScreen(
                 fontSize = 28.sp
             )
             Spacer(modifier = Modifier.height(32.dp))
-            AnalyticsCircle {
-                return@AnalyticsCircle if ((viewModel.completedTasksList.size + viewModel.unCompletedTasksList.size) != 0) {
-                    viewModel.completedTasksList.size / (viewModel.completedTasksList.size + viewModel.unCompletedTasksList.size).toFloat()
+
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+
+                item {
+                    AnalyticsCircle {
+                        return@AnalyticsCircle if ((viewModel.completedTasksList.size + viewModel.unCompletedTasksList.size) != 0) {
+                            viewModel.completedTasksList.size / (viewModel.completedTasksList.size + viewModel.unCompletedTasksList.size).toFloat()
+                        } else {
+                            1f
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                item {
+                    Text(
+                        text = "Project activity",
+                        fontFamily = SfDisplay,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                item {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        itemsIndexed(items = listOf("Done", "To do")) { index, item ->
+                            ClickableText(
+                                text = AnnotatedString(
+                                    text = item,
+                                    spanStyle = SpanStyle(
+                                        color = animateColorAsState(
+                                            targetValue = if (index == selectedIndex) AppSecondaryColor else Color.LightGray,
+                                            label = ""
+                                        ).value,
+                                        fontFamily = SfDisplay,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp
+                                    )
+                                ),
+                                onClick = {
+                                    {}
+                                    selectedIndex = index
+                                }
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
+                if (selectedIndex == 0) {
+                    items(count = viewModel.completedTasksList.size) { index ->
+                        DashboardTaskItem(
+                            task = viewModel.completedTasksList[index]
+                        ) {
+                            navController.navigate(
+                                route = HomeScreens.TaskDetails.route.replace(
+                                    "{task_id}",
+                                    it.id.toString()
+                                )
+                            )
+                        }
+                    }
                 } else {
-                    1f
+                    items(count = viewModel.unCompletedTasksList.size) { index ->
+                        DashboardTaskItem(task = viewModel.unCompletedTasksList[index]) {
+                            navController.navigate(
+                                route = HomeScreens.TaskDetails.route.replace(
+                                    "{task_id}",
+                                    it.id.toString()
+                                )
+                            )
+                        }
+                    }
                 }
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            ProjectActivitySection(
-                completedTasks = viewModel.completedTasksList,
-                unCompletedTasks = viewModel.unCompletedTasksList,
-                onCategoryItemClicked = {},
-                onTaskClicked = {
-                    navController.navigate(
-                        route = HomeScreens.TaskDetails.route.replace(
-                            "{task_id}",
-                            it.id.toString()
-                        )
-                    )
-                }
-            )
         }
     }
+
     DisposableEffect(key1 = lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_CREATE) {
@@ -312,72 +384,6 @@ fun AnalyticsCircle(
 }
 
 @Composable
-fun ProjectActivitySection(
-    onCategoryItemClicked: (index: Int) -> Unit,
-    completedTasks: List<Task>,
-    unCompletedTasks: List<Task>,
-    onTaskClicked: (Task) -> Unit
-) {
-    var selectedIndex by remember { mutableIntStateOf(0) }
-
-    Column(
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Text(
-            text = "Project activity",
-            fontFamily = SfDisplay,
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(items = listOf("Done", "To do")) { index, item ->
-                ClickableText(
-                    text = AnnotatedString(
-                        text = item,
-                        spanStyle = SpanStyle(
-                            color = animateColorAsState(
-                                targetValue = if (index == selectedIndex) AppSecondaryColor else Color.LightGray,
-                                label = ""
-                            ).value,
-                            fontFamily = SfDisplay,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                    ),
-                    onClick = {
-                        onCategoryItemClicked(index)
-                        selectedIndex = index
-                    }
-                )
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (selectedIndex == 0) {
-                items(count = completedTasks.size) { index ->
-                    DashboardTaskItem(
-                        task = completedTasks[index]
-                    ) { onTaskClicked(it) }
-                }
-            } else {
-                items(count = unCompletedTasks.size) { index ->
-                    DashboardTaskItem(task = unCompletedTasks[index]) {
-                        onTaskClicked(it)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun DashboardTaskItem(
     task: Task,
     onTaskClicked: (Task) -> Unit
@@ -393,17 +399,18 @@ fun DashboardTaskItem(
     }
     Row(
         modifier = Modifier
-            .padding(8.dp)
             .shadow(
-                offsetX = 2.dp,
-                blurRadius = 8.dp,
-                color = Color(0x14000000)
+                color=Color.Gray.copy(alpha = 0.1f),
+                borderRadius = 8.dp,
+                blurRadius = 64.dp
             )
+            .padding(vertical = 8.dp)
+
             .fillMaxWidth()
             .height(100.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFFFFFFFF))
-            .padding(vertical = 12.dp, horizontal = 16.dp)
+            .padding(vertical = 12.dp, horizontal = 12.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null
@@ -455,7 +462,7 @@ fun DashboardTaskItem(
         }
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.size(48.dp)
+            modifier = Modifier.size(72.dp)
         ) {
             Text(
                 text = "${progressCount.value.toInt()}%",

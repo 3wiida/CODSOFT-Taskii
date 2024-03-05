@@ -117,4 +117,7 @@ dependencies {
 
     // CLOCK
     implementation ("com.maxkeppeler.sheets-compose-dialogs:clock:1.2.0")
+
+    //Lottie
+    implementation("com.airbnb.android:lottie-compose:6.0.1")
 }

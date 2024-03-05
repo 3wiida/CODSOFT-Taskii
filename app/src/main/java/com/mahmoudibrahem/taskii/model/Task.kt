@@ -8,9 +8,9 @@ import java.time.LocalDateTime
 data class Task(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val name: String,
-    val description: String,
-    val deadline: LocalDateTime,
-    val progress: Float,
+    val name: String = "",
+    val description: String = "",
+    val deadline: LocalDateTime = LocalDateTime.now(),
+    val progress: Float = 0.0f,
     val isCompleted: Boolean = false,
 )

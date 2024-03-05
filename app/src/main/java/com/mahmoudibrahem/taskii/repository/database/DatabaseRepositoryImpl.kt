@@ -12,8 +12,8 @@ class DatabaseRepositoryImpl @Inject constructor(
     private val tasksDao: TasksDao,
     private val checkItemDao: CheckItemDao,
     private val db: TaskiiDatabase
-) :
-    DatabaseRepository {
+) : DatabaseRepository {
+
     override suspend fun upsertTask(task: Task) {
         tasksDao.upsertTask(task)
     }
@@ -71,5 +71,26 @@ class DatabaseRepositoryImpl @Inject constructor(
 
     override suspend fun getUnCompletedTasks(): List<Task> {
         return tasksDao.getUnCompletedTasks()
+    }
+
+    override suspend fun deleteOldCheckList(taskId: Int) {
+        checkItemDao.deleteOldCheckList(taskId)
+    }
+
+    override suspend fun updateTask(task: Task, checkList: List<String>) {
+        db.withTransaction {
+            upsertTask(task)
+            val oldChecklist = getCheckItemsOfTask(task.id)
+            val newItems = mutableListOf<String>()
+            oldChecklist.forEach{oldItem->
+                if(!checkList.contains(oldItem.content)){
+                    newItems.add(oldItem.content)
+                }
+            }
+            newItems.forEach { content ->
+                val checkItem = CheckItem(taskId = task.id, content = content)
+                upsertCheckItem(checkItem)
+            }
+        }
     }
 }

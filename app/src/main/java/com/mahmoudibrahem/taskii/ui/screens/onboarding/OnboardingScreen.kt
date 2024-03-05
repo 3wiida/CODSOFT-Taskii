@@ -30,6 +30,7 @@ import androidx.compose.material.Icon
 import androidx.compose.material.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -42,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -49,10 +51,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
 import com.google.accompanist.pager.HorizontalPagerIndicator
 import com.mahmoudibrahem.taskii.R
-import com.mahmoudibrahem.taskii.navigation.screens.OnboardingScreens
 import com.mahmoudibrahem.taskii.pojo.OnboardingPage
 import com.mahmoudibrahem.taskii.ui.theme.SfDisplay
 import com.mahmoudibrahem.taskii.ui.theme.AppMainColor
@@ -64,12 +64,27 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnBoardingScreen(
-    pages: List<OnboardingPage>,
-    navController: NavController,
-    pagerState: PagerState = rememberPagerState { pages.size },
-    viewModel: OnboardingViewModel = hiltViewModel()
+    viewModel: OnboardingViewModel = hiltViewModel(),
+    onNavigateToNameScreen: () -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+    OnboardingScreenContent(
+        pagerState = rememberPagerState { uiState.pages.size },
+        uiState = uiState,
+        onSkipBtnClicked = onNavigateToNameScreen,
+        onStartBtnClicked = onNavigateToNameScreen
+    )
+}
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun OnboardingScreenContent(
+    pagerState: PagerState,
+    uiState: OnboardingUIState,
+    scope: CoroutineScope = rememberCoroutineScope(),
+    onSkipBtnClicked: () -> Unit,
+    onStartBtnClicked: () -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -77,46 +92,55 @@ fun OnBoardingScreen(
                 top = 24.dp,
                 start = 28.dp,
                 end = 28.dp,
-                bottom = 56.dp
+                bottom = 0.dp
             ),
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+
         OnboardingHeader(
-            pagerState = pagerState,
-            navController = navController
+            currentPage = pagerState.currentPage,
+            onSkipBtnClicked = onSkipBtnClicked,
+            onBackBtnClicked = {
+                scope.launch {
+                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
+                }
+            }
         )
+
         OnboardingPager(
-            pages = pages,
+            pages = uiState.pages,
             pagerState = pagerState
         )
+
         HorizontalPagerIndicator(
             pagerState = pagerState,
-            pageCount = pages.size,
+            pageCount = uiState.pages.size,
             activeColor = AppSecondaryColor,
             inactiveColor = Color.LightGray,
         )
+
         OnboardingFooter(
-            pagerState = pagerState,
-            navController = navController
+            currentPage = pagerState.currentPage,
+            onStartBtnClicked = onStartBtnClicked
         )
+
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingHeader(
-    pagerState: PagerState,
-    navController: NavController,
-    scope: CoroutineScope = rememberCoroutineScope(),
+    currentPage: Int,
+    onBackBtnClicked: () -> Unit,
+    onSkipBtnClicked: () -> Unit,
 ) {
     val skipButtonScale by animateFloatAsState(
-        targetValue = if (pagerState.currentPage == 2) 0f else 1f,
+        targetValue = if (currentPage == 2) 0f else 1f,
         animationSpec = tween(500),
         label = ""
     )
     val backButtonScale by animateFloatAsState(
-        targetValue = if (pagerState.currentPage == 0) 0f else 1f,
+        targetValue = if (currentPage == 0) 0f else 1f,
         animationSpec = tween(500),
         label = ""
     )
@@ -139,14 +163,12 @@ fun OnboardingHeader(
                     indication = null,
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
-                    scope.launch {
-                        pagerState.animateScrollToPage(page = pagerState.currentPage - 1)
-                    }
+                    onBackBtnClicked()
                 }
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.back_ic),
-                contentDescription = "back",
+                contentDescription = stringResource(R.string.back),
                 tint = Color.White
             )
         }
@@ -155,14 +177,8 @@ fun OnboardingHeader(
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .scale(skipButtonScale),
-            text = AnnotatedString("Skip"),
-            onClick = {
-                navController.navigate(route = OnboardingScreens.NamingUserScreen.route) {
-                    popUpTo(OnboardingScreens.OnboardingScreen.route) {
-                        inclusive = true
-                    }
-                }
-            },
+            text = AnnotatedString(stringResource(R.string.skip)),
+            onClick = { onSkipBtnClicked() },
             style = TextStyle(
                 color = AppMainColor,
                 fontSize = 20.sp,
@@ -175,6 +191,17 @@ fun OnboardingHeader(
 }
 
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun OnboardingPager(
+    pages: List<OnboardingPage>,
+    pagerState: PagerState
+) {
+    HorizontalPager(state = pagerState) { index ->
+        OnboardingPage(onboardingPage = pages[index])
+    }
+}
+
 @Composable
 fun OnboardingPage(
     onboardingPage: OnboardingPage
@@ -184,9 +211,9 @@ fun OnboardingPage(
         verticalArrangement = Arrangement.Center
     ) {
         Image(
-            painter = onboardingPage.image,
-            contentDescription = "onboarding Image",
-            modifier = Modifier.size(320.dp)
+            painter = painterResource(id = onboardingPage.image),
+            contentDescription = stringResource(R.string.onboarding_image),
+            modifier = Modifier.size(270.dp)
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
@@ -207,34 +234,12 @@ fun OnboardingPage(
 }
 
 
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun OnboardingPager(
-    pages: List<OnboardingPage>,
-    pagerState: PagerState
-) {
-    HorizontalPager(state = pagerState) { index ->
-        OnboardingPage(onboardingPage = pages[index])
-    }
-}
-
-
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CircularProgressIndicator(
-    pagerState: PagerState,
+    currentPage: Int,
     circleIndicatorScale: Float,
     arcProgress: Float
 ) {
-
-    /*val arcProgress by animateFloatAsState(
-        targetValue = (360f * (pagerState.currentPage + 1) / 3),
-        animationSpec = tween(
-            durationMillis = 500
-        ),
-        label = ""
-    )*/
-
 
     Box(
         modifier = Modifier
@@ -260,31 +265,30 @@ fun CircularProgressIndicator(
         contentAlignment = Alignment.Center
     ) {
         Text(
-            text = (pagerState.currentPage + 1).toString(),
-            color = Color.White,
-            fontFamily = SfDisplay,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
             modifier = Modifier
                 .background(
                     AppMainColor,
                     CircleShape
                 )
                 .size(48.dp)
-                .wrapContentSize(align = Alignment.Center)
+                .wrapContentSize(align = Alignment.Center),
+            text = (currentPage + 1).toString(),
+            color = Color.White,
+            fontFamily = SfDisplay,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
         )
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun OnboardingFooter(
-    pagerState: PagerState,
-    navController: NavController,
+    currentPage: Int,
+    onStartBtnClicked: () -> Unit
 ) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
 
-        val transition = updateTransition(targetState = pagerState.currentPage, label = "")
+        val transition = updateTransition(targetState = currentPage, label = "")
 
         val buttonScale = transition.animateFloat(
             label = "",
@@ -320,19 +324,19 @@ fun OnboardingFooter(
         }
 
         CircularProgressIndicator(
-            pagerState = pagerState,
+            currentPage = currentPage,
             circleIndicatorScale = circularIndicatorScale.value,
             arcProgress = arcProgress.value
         )
 
         Button(
             onClick = {
-                navController.navigate(route = OnboardingScreens.NamingUserScreen.route) {
+                /*navController.navigate(route = OnboardingScreens.NamingUserScreen.route) {
                     popUpTo(OnboardingScreens.OnboardingScreen.route) {
                         inclusive = true
                     }
-
-                }
+                }*/
+                onStartBtnClicked()
             },
             modifier = Modifier
                 .fillMaxWidth()
@@ -342,7 +346,7 @@ fun OnboardingFooter(
             colors = ButtonDefaults.buttonColors(backgroundColor = AppMainColor)
         ) {
             Text(
-                text = "GET STARTED",
+                text = stringResource(R.string.get_started),
                 color = Color.White,
                 fontFamily = SfDisplay,
                 fontWeight = FontWeight.Bold,

@@ -1,14 +1,18 @@
 package com.mahmoudibrahem.taskii.ui.screens.search
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,15 +33,14 @@ import androidx.compose.material.Text
 import androidx.compose.material.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -45,32 +48,51 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.rememberLottieComposition
 import com.mahmoudibrahem.taskii.R
 import com.mahmoudibrahem.taskii.model.Task
-import com.mahmoudibrahem.taskii.navigation.screens.HomeScreens
 import com.mahmoudibrahem.taskii.ui.theme.AppSecondaryColor
+import com.mahmoudibrahem.taskii.ui.theme.LightTextColor
 import com.mahmoudibrahem.taskii.ui.theme.SfDisplay
+import kotlinx.coroutines.delay
 
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel = hiltViewModel(),
-    navController: NavController
+    onNavigateToTaskDetails: (Task) -> Unit = {},
+    onNavigateBack: () -> Unit = {}
 ) {
-    var isFirstOpen by remember {
-        mutableStateOf(true)
+    val uiState by viewModel.uiState.collectAsState()
+    SearchScreenContent(
+        uiState = uiState,
+        onQueryChanged = viewModel::onQueryChanged,
+        onClearClicked = viewModel::onClearClicked,
+        onSearchClicked = viewModel::onSearchClicked,
+        onBackClicked = onNavigateBack,
+        onResultClicked = onNavigateToTaskDetails
+    )
+    LaunchedEffect(key1 = uiState.query) {
+        delay(1000)
+        viewModel.searchForTasks(uiState.query)
     }
-    var query by rememberSaveable {
-            mutableStateOf("")
-    }
+}
 
-    LaunchedEffect(key1 = query){
-        if(query.isNotEmpty()) viewModel.searchForTasks(query) else viewModel.searchResults.clear()
-    }
-
+@Composable
+private fun SearchScreenContent(
+    uiState: SearchScreenUIState,
+    onQueryChanged: (String) -> Unit,
+    onClearClicked: () -> Unit,
+    onSearchClicked: () -> Unit,
+    onBackClicked: () -> Unit,
+    onResultClicked: (Task) -> Unit
+) {
     Surface {
         Column(
             modifier = Modifier
@@ -79,44 +101,39 @@ fun SearchScreen(
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.Start
         ) {
-            SearchScreenHeader { navController.navigateUp() }
+            SearchScreenHeader(onBackClicked = onBackClicked)
             Spacer(modifier = Modifier.height(16.dp))
             SearchWidget(
-                searchQuery = query,
-                onQueryChanged = { newQuery ->
-                    query = newQuery
-                },
-                onClearClicked = {
-                    query = ""
-                },
-                onSearchClicked = {
-                    viewModel.searchForTasks(searchQuery = query)
-                    isFirstOpen = false
-                }
+                searchQuery = uiState.query,
+                onQueryChanged = onQueryChanged,
+                onClearClicked = onClearClicked,
+                onSearchClicked = onSearchClicked
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Result",
+                text = "Results (${uiState.results.size})",
                 fontFamily = SfDisplay,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            ResultsSection(
-                resultsList = viewModel.searchResults,
-                onResultClicked = {
-                    navController.navigate(
-                        route = HomeScreens.TaskDetails.route.replace(
-                            "{task_id}",
-                            it.id.toString()
-                        )
-                    )
-                }
-            )
-            SearchEmptyState(
-                resultsList = viewModel.searchResults,
-                isFirstOpen = isFirstOpen
-            )
+            AnimatedVisibility(
+                visible = uiState.results.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut(animationSpec = tween(durationMillis = 500))
+            ) {
+                ResultsSection(
+                    resultsList = uiState.results,
+                    onResultClicked = onResultClicked
+                )
+            }
+            AnimatedVisibility(
+                visible = uiState.results.isEmpty() && uiState.showEmptyState,
+                enter = fadeIn(animationSpec = tween(delayMillis = 500)),
+                exit = fadeOut()
+            ){
+                EmptyState()
+            }
         }
     }
 }
@@ -143,7 +160,7 @@ fun SearchScreenHeader(
             )
         }
         Text(
-            text = "Search",
+            text = stringResource(R.string.search),
             fontFamily = SfDisplay,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
@@ -155,10 +172,10 @@ fun SearchScreenHeader(
 
 @Composable
 fun SearchWidget(
-    searchQuery: String = "",
-    onQueryChanged: (String) -> Unit = {},
-    onClearClicked: () -> Unit = {},
-    onSearchClicked: () -> Unit = {}
+    searchQuery: String,
+    onQueryChanged: (String) -> Unit,
+    onClearClicked: () -> Unit,
+    onSearchClicked: () -> Unit
 ) {
     OutlinedTextField(
         value = searchQuery,
@@ -204,7 +221,7 @@ fun SearchWidget(
         ),
         placeholder = {
             Text(
-                text = "Search...",
+                text = stringResource(R.string.search_placeholder),
                 color = Color(0xFFC2B6CF),
                 fontFamily = SfDisplay,
                 fontSize = 16.sp,
@@ -222,28 +239,34 @@ fun ResultsSection(
     resultsList: List<Task> = emptyList(),
     onResultClicked: (Task) -> Unit
 ) {
-    AnimatedVisibility(visible = resultsList.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(resultsList.size) { index ->
-                ClickableText(
-                    text = buildAnnotatedString {
-                        withStyle(
-                            SpanStyle(
-                                color = Color(0xFF52465F),
-                                fontFamily = SfDisplay,
-                                fontWeight = FontWeight.Normal,
-                                fontSize = 16.sp
-                            )
-                        ) {
-                            append(resultsList[index].name)
-                        }
-                    },
-                    onClick = {
+    LazyColumn(
+        modifier = Modifier.padding(top = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(resultsList.size) { index ->
+            Row(
+                modifier = Modifier
+                    .animateItemPlacement()
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
                         onResultClicked(resultsList[index])
                     },
-                    modifier = Modifier.animateItemPlacement()
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    modifier = Modifier.padding(end = 8.dp),
+                    painter = painterResource(id = R.drawable.search_result_icon),
+                    contentDescription = "Result Icon"
+                )
+                Text(
+                    text = resultsList[index].name,
+                    color = Color(0xFF52465F),
+                    fontFamily = SfDisplay,
+                    fontWeight = FontWeight.Normal,
+                    fontSize = 16.sp
                 )
             }
         }
@@ -253,10 +276,10 @@ fun ResultsSection(
 @Composable
 fun SearchEmptyState(
     resultsList: List<Task> = emptyList(),
-    isFirstOpen: Boolean
+    isShowEmptyState: Boolean
 ) {
     AnimatedVisibility(
-        visible = (resultsList.isEmpty() && !isFirstOpen),
+        visible = (resultsList.isEmpty() && isShowEmptyState),
         enter = fadeIn(),
         exit = fadeOut()
     ) {
@@ -273,7 +296,7 @@ fun SearchEmptyState(
                 modifier = Modifier.size(240.dp)
             )
             Text(
-                text = "No have result please try again !",
+                text = stringResource(R.string.no_have_result_please_try_again),
                 color = Color(0xFFC2B6CF),
                 fontFamily = SfDisplay,
                 fontWeight = FontWeight.Normal,
@@ -282,4 +305,48 @@ fun SearchEmptyState(
             )
         }
     }
+}
+
+@Composable
+private fun EmptyState() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 80.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val composition by rememberLottieComposition(
+                LottieCompositionSpec.RawRes(R.raw.search_empty_anim)
+            )
+            LottieAnimation(
+                modifier = Modifier.size(250.dp),
+                composition = composition,
+                iterations = LottieConstants.IterateForever
+            )
+            Text(
+                text = "No results found with your search query",
+                fontFamily = SfDisplay,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.Black
+            )
+            Text(
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                text = "Try again with another query",
+                fontFamily = SfDisplay,
+                fontSize = 16.sp,
+                color = LightTextColor,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Preview(showSystemUi = true)
+@Composable
+private fun SearchScreenPreview() {
+    SearchScreen()
 }

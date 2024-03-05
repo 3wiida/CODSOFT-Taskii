@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
 import androidx.compose.material.Card
+import androidx.compose.material.Colors
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.LinearProgressIndicator
@@ -41,12 +42,13 @@ import androidx.compose.material.RadioButtonDefaults
 import androidx.compose.material.Scaffold
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,22 +65,27 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
-import androidx.navigation.NavController
+import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionSpec
+import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.rememberLottieComposition
 import com.mahmoudibrahem.taskii.R
 import com.mahmoudibrahem.taskii.model.CheckItem
 import com.mahmoudibrahem.taskii.model.Task
-import com.mahmoudibrahem.taskii.navigation.screens.HomeScreens
 import com.mahmoudibrahem.taskii.ui.theme.AppGreenColor
 import com.mahmoudibrahem.taskii.ui.theme.AppMainColor
 import com.mahmoudibrahem.taskii.ui.theme.AppSecondaryColor
@@ -86,29 +93,61 @@ import com.mahmoudibrahem.taskii.ui.theme.LightTextColor
 import com.mahmoudibrahem.taskii.ui.theme.SfDisplay
 import com.mahmoudibrahem.taskii.util.shadow
 
-@SuppressLint("UnusedMaterialScaffoldPaddingParameter")
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
-    navController: NavController,
-    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current
+    lifecycleOwner: LifecycleOwner = LocalLifecycleOwner.current,
+    onNavigateToCreateTask: () -> Unit = {},
+    onNavigateToAnalytics: () -> Unit = {},
+    onNavigateToSearch: () -> Unit = {},
+    onNavigateToTaskDetails: (Task) -> Unit = {}
 ) {
+    val uiState by viewModel.uiState.collectAsState()
 
-    var selectedTaskIndex by remember { mutableIntStateOf(0) }
+    HomeScreenContent(
+        uiState = uiState,
+        onAddClicked = onNavigateToCreateTask,
+        onAnalyticsClicked = onNavigateToAnalytics,
+        onSearchButtonClicked = onNavigateToSearch,
+        onTaskClicked = viewModel::onTaskClicked,
+        onShowClicked = onNavigateToTaskDetails,
+        onTaskCompleted = viewModel::onTaskCompleted,
+        onCompleteCheckItem = viewModel::onCompleteCheckItem
+    )
 
+    DisposableEffect(key1 = lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                viewModel.getUncompletedTasks()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+}
+
+@SuppressLint("UnusedMaterialScaffoldPaddingParameter")
+@Composable
+private fun HomeScreenContent(
+    uiState: HomeScreenUIState,
+    onAddClicked: () -> Unit,
+    onAnalyticsClicked: () -> Unit,
+    onSearchButtonClicked: () -> Unit,
+    onTaskClicked: (Int, Int) -> Unit,
+    onShowClicked: (Task) -> Unit,
+    onTaskCompleted: () -> Unit,
+    onCompleteCheckItem: (CheckItem, Boolean, Int) -> Unit
+) {
     Scaffold(
         bottomBar = {
             AppBottomBar(
                 selectedScreen = 0,
-                onAddClicked = {
-                    navController.navigate(route = HomeScreens.CreateTask.route)
-                },
-                onAnalyticsClicked = {
-                    navController.navigate(route = HomeScreens.Analytics.route)
-                }
+                onAddClicked = onAddClicked,
+                onAnalyticsClicked = onAnalyticsClicked
             )
         }
     ) {
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -120,72 +159,85 @@ fun HomeScreen(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            HomeTopBar(
-                onSearchButtonClicked = {
-                    navController.navigate(
-                        route = HomeScreens.Search.route
-                    )
-                }
-            )
+            HomeTopBar(onSearchButtonClicked = onSearchButtonClicked)
+
             Spacer(modifier = Modifier.height(24.dp))
+
             GreetingSection(
-                username = viewModel.username.collectAsState(initial = "").value ?: "",
-                tasksCount = viewModel.tasks.size
+                username = uiState.username,
+                tasksCount = uiState.tasks.size
             )
             Spacer(modifier = Modifier.height(24.dp))
-            TasksSection(
-                tasks = viewModel.tasks,
-                selectedItemIndex = selectedTaskIndex,
-                onTaskClicked = { index, id ->
-                    viewModel.getCheckListByTaskId(id)
-                    selectedTaskIndex = index
-                },
-                onGoClicked = { task ->
-                    navController.navigate(
-                        route = HomeScreens.TaskDetails.route.replace(
-                            "{task_id}",
-                            task.id.toString()
-                        )
-                    )
-                },
-                onTaskCompleted = {
-                    viewModel.getUncompletedTasks()
-                    selectedTaskIndex=0
-                }
-            )
-            Spacer(modifier = Modifier.height(24.dp))
+
             AnimatedVisibility(
-                visible = viewModel.tasks.isNotEmpty(),
+                visible = uiState.tasks.isEmpty() && uiState.isShowEmptyState,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
-                CheckListSection(
-                    headerText = "Task Checklist",
-                    checkList = viewModel.selectedTaskCheckList,
-                    onCompleteCheckItem = { item, isCompleted, index ->
-                        viewModel.saveTaskProcess(
-                            checkItem = item,
-                            taskIndex = selectedTaskIndex,
-                            checkItemIndex = index,
-                            isCheckItemCompleted = isCompleted
+                EmptyState()
+            }
+
+            AnimatedVisibility(
+                visible = uiState.tasks.isNotEmpty(),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    /*item {
+                        GreetingSection(
+                            username = uiState.username,
+                            tasksCount = uiState.tasks.size
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }*/
+
+                    item {
+                        TasksSection(
+                            tasks = uiState.tasks,
+                            selectedItemIndex = uiState.selectedTaskIndex,
+                            onTaskClicked = onTaskClicked,
+                            onShowClicked = onShowClicked,
+                            onTaskCompleted = onTaskCompleted
+
                         )
                     }
-                )
-            }
-            DisposableEffect(key1 = lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) {
-                        viewModel.getUncompletedTasks()
+
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                    }
+
+                    item {
+                        Text(
+                            text = "Task Checklist",
+                            fontFamily = SfDisplay,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color.Black,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+                    }
+
+                    items(uiState.currentCheckList.size) { index ->
+                        CheckListItem(
+                            item = uiState.currentCheckList[index],
+                            onCompleteCheckItem = { item, isCompleted ->
+                                onCompleteCheckItem(
+                                    item,
+                                    isCompleted,
+                                    index
+                                )
+                            }
+                        )
                     }
                 }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
         }
     }
-
 }
-
 
 @Composable
 fun HomeTopBar(
@@ -193,6 +245,7 @@ fun HomeTopBar(
 ) {
     Box(modifier = Modifier.fillMaxWidth()) {
         Text(
+            modifier = Modifier.align(Alignment.CenterStart),
             text = buildAnnotatedString {
                 withStyle(
                     SpanStyle(
@@ -202,7 +255,7 @@ fun HomeTopBar(
                         fontSize = 28.sp
                     )
                 ) {
-                    append("T")
+                    append(stringResource(R.string.t))
                 }
                 withStyle(
                     SpanStyle(
@@ -212,15 +265,13 @@ fun HomeTopBar(
                         fontSize = 28.sp
                     )
                 ) {
-                    append("askii")
+                    append(stringResource(R.string.askii))
                 }
-            },
-            modifier = Modifier.align(Alignment.CenterStart)
+            }
         )
-
         IconButton(
-            onClick = { onSearchButtonClicked() },
-            modifier = Modifier.align(Alignment.CenterEnd)
+            modifier = Modifier.align(Alignment.CenterEnd),
+            onClick = onSearchButtonClicked
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.search_ic),
@@ -242,7 +293,7 @@ fun GreetingSection(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "Hello, $username!",
+            text = stringResource(R.string.hello, username),
             fontFamily = SfDisplay,
             fontSize = 16.sp,
             color = LightTextColor
@@ -258,7 +309,7 @@ fun GreetingSection(
                         color = Color.Black
                     )
                 ) {
-                    append("You've got ")
+                    append(stringResource(R.string.you_ve_got))
                 }
                 withStyle(
                     SpanStyle(
@@ -278,7 +329,7 @@ fun GreetingSection(
                         color = Color.Black
                     )
                 ) {
-                    append(" uncompleted\n tasks")
+                    append(stringResource(R.string.uncompleted_tasks))
                 }
             }
         )
@@ -289,9 +340,9 @@ fun GreetingSection(
 fun TasksSection(
     tasks: List<Task>,
     selectedItemIndex: Int = 0,
-    onTaskClicked: (index: Int, id: Int) -> Unit,
-    onGoClicked: (task: Task) -> Unit,
-    onTaskCompleted: (task: Task) -> Unit
+    onTaskClicked: (Int, id: Int) -> Unit,
+    onShowClicked: (Task) -> Unit,
+    onTaskCompleted: () -> Unit
 ) {
     LazyRow(
         modifier = Modifier.fillMaxWidth(),
@@ -302,8 +353,8 @@ fun TasksSection(
                 task = tasks[index],
                 onTaskClicked = { id -> onTaskClicked(index, id) },
                 isSelected = index == selectedItemIndex,
-                onGoClicked = { task -> onGoClicked(task) },
-                onTaskCompleted = {task ->  onTaskCompleted(task)}
+                onGoClicked = { task -> onShowClicked(task) },
+                onTaskCompleted = onTaskCompleted
             )
         }
     }
@@ -315,9 +366,9 @@ fun TasksSection(
 fun LazyItemScope.TaskCard(
     task: Task,
     isSelected: Boolean = true,
-    onTaskClicked: (id: Int) -> Unit,
-    onGoClicked: (task: Task) -> Unit,
-    onTaskCompleted:(task:Task) -> Unit
+    onTaskClicked: (Int) -> Unit,
+    onGoClicked: (Task) -> Unit,
+    onTaskCompleted: () -> Unit
 ) {
     val borderColor = animateColorAsState(
         targetValue = if (isSelected) AppSecondaryColor else Color.Transparent,
@@ -330,7 +381,7 @@ fun LazyItemScope.TaskCard(
         animationSpec = tween(800)
     )
     if (progressValue.value == 1.0f) {
-        onTaskCompleted(task)
+        onTaskCompleted()
     }
     Surface(
         modifier = Modifier
@@ -375,6 +426,7 @@ fun LazyItemScope.TaskCard(
                         .padding(end = 30.dp)
                 )
                 ClickableText(
+                    modifier = Modifier.align(Alignment.TopEnd),
                     text = buildAnnotatedString {
                         withStyle(
                             SpanStyle(
@@ -384,12 +436,11 @@ fun LazyItemScope.TaskCard(
                                 fontWeight = FontWeight.Medium
                             )
                         ) {
-                            append("show")
+                            append(stringResource(R.string.show))
                         }
 
                     },
-                    onClick = { onGoClicked(task) },
-                    modifier = Modifier.align(Alignment.TopEnd)
+                    onClick = { onGoClicked(task) }
                 )
             }
 
@@ -408,7 +459,7 @@ fun LazyItemScope.TaskCard(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Process",
+                    text = stringResource(R.string.process),
                     fontFamily = SfDisplay,
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
@@ -430,9 +481,13 @@ fun LazyItemScope.TaskCard(
                 color = AppGreenColor
             )
             Text(
-                text = "Deadline: ${
-                    task.deadline.month.name.lowercase().slice(0..2)
-                } ${task.deadline.dayOfMonth} at ${task.deadline.hour}:${task.deadline.minute}",
+                text = stringResource(
+                    R.string.deadline_at,
+                    task.deadline.month.name.lowercase().slice(0..2),
+                    task.deadline.dayOfMonth,
+                    task.deadline.hour,
+                    task.deadline.minute
+                ),
                 color = AppMainColor,
                 modifier = Modifier
                     .background(
@@ -443,44 +498,6 @@ fun LazyItemScope.TaskCard(
                 maxLines = 1,
                 fontSize = 12.sp
             )
-        }
-    }
-}
-
-@Composable
-fun CheckListSection(
-    headerText: String,
-    checkList: List<CheckItem>,
-    onCompleteCheckItem: (CheckItem, Boolean, Int) -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.Start,
-    ) {
-        Text(
-            text = headerText,
-            fontFamily = SfDisplay,
-            fontWeight = FontWeight.Bold,
-            fontSize = 20.sp,
-            color = Color.Black,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            items(checkList.size) { index ->
-                CheckListItem(
-                    item = checkList[index],
-                    onCompleteCheckItem = { item, isCompleted ->
-                        onCompleteCheckItem(
-                            item,
-                            isCompleted,
-                            index
-                        )
-                    }
-                )
-            }
         }
     }
 }
@@ -505,6 +522,7 @@ fun LazyItemScope.CheckListItem(
     }
     Row(
         modifier = Modifier
+            .padding(bottom = 8.dp)
             .fillMaxWidth()
             .graphicsLayer {
                 alpha = itemAlpha.value
@@ -603,9 +621,7 @@ fun AppBottomBar(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(
-                    onClick = {
-                        onHomeClicked()
-                    }
+                    onClick = onHomeClicked
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.home_ic),
@@ -615,9 +631,7 @@ fun AppBottomBar(
                     )
                 }
                 IconButton(
-                    onClick = {
-                        onAnalyticsClicked()
-                    }
+                    onClick = onAnalyticsClicked
                 ) {
                     Icon(
                         painter = painterResource(id = R.drawable.analytics_ic),
@@ -657,4 +671,48 @@ fun AppBottomBar(
             )
         }
     }
+}
+
+@Composable
+private fun EmptyState() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(bottom = 50.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            val composition by rememberLottieComposition(
+                LottieCompositionSpec.RawRes(R.raw.home_empty_anim)
+            )
+            LottieAnimation(
+                modifier = Modifier.size(220.dp),
+                composition = composition,
+                iterations = LottieConstants.IterateForever
+            )
+            Text(
+                text = "You don't have any task to do right now",
+                fontFamily = SfDisplay,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp,
+                color = Color.Black
+            )
+            Text(
+                modifier = Modifier.padding(top = 8.dp, bottom = 24.dp),
+                text = "Start creating your first task today",
+                fontFamily = SfDisplay,
+                fontSize = 16.sp,
+                color = LightTextColor,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Preview(showSystemUi = true)
+@Composable
+private fun HomeScreenPreview() {
+    HomeScreen()
 }

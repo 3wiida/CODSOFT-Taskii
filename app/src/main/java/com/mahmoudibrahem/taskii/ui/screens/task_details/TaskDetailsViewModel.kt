@@ -1,65 +1,74 @@
 package com.mahmoudibrahem.taskii.ui.screens.task_details
 
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mahmoudibrahem.taskii.model.CheckItem
-import com.mahmoudibrahem.taskii.model.Task
 import com.mahmoudibrahem.taskii.repository.database.DatabaseRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 @HiltViewModel
-class TaskDetailsViewModel @Inject constructor(private val databaseRepository: DatabaseRepository) :
-    ViewModel() {
+class TaskDetailsViewModel @Inject constructor(
+    private val databaseRepository: DatabaseRepository
+) : ViewModel() {
 
-    private val _task = MutableStateFlow<Task?>(null)
-    val task = _task.asStateFlow()
+    private val _uiState = MutableStateFlow(TaskDetailsScreenUIState())
+    val uiState = _uiState.asStateFlow()
 
-    var checkList:SnapshotStateList<CheckItem> = mutableStateListOf()
+    fun onCompleteTaskItem(checkItem: CheckItem, isCompleted: Boolean, index: Int) {
+        saveTaskProcess(checkItem, index, isCompleted)
+    }
+
+    fun onDeleteTaskClicked() {
+        deleteTask()
+    }
 
     fun getTaskById(id: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            _task.value = databaseRepository.getTaskById(id)
+            _uiState.update { it.copy(task = databaseRepository.getTaskById(id)) }
         }
     }
 
     fun getCheckListByTaskId(taskId: Int) {
         viewModelScope.launch(Dispatchers.IO) {
-            checkList.clear()
-            checkList.addAll(databaseRepository.getCheckItemsOfTask(taskId))
+            _uiState.update {
+                it.copy(
+                    checkList = databaseRepository.getCheckItemsOfTask(taskId).toMutableStateList()
+                )
+            }
         }
     }
 
-    fun saveTaskProcess(
+    private fun saveTaskProcess(
         checkItem: CheckItem,
         checkItemIndex: Int,
         isCheckItemCompleted: Boolean
     ) {
-        checkList[checkItemIndex] = checkItem.copy(isComplete = isCheckItemCompleted)
-        _task.value = _task.value?.copy(progress = getNewProgress())
+        uiState.value.checkList[checkItemIndex] = checkItem.copy(isComplete = isCheckItemCompleted)
+        _uiState.update { it.copy(task = uiState.value.task.copy(progress = getNewProgress())) }
         viewModelScope.launch(Dispatchers.IO) {
             databaseRepository.saveTaskProcess(
-                task = _task.value!!,
-                checkItem = checkList[checkItemIndex]
+                task = uiState.value.task,
+                checkItem = uiState.value.checkList[checkItemIndex]
             )
         }
     }
 
     private fun getNewProgress(): Float {
-        val totalItems = checkList.size
-        val completedItems = checkList.filter { it.isComplete }.size
+        val totalItems = uiState.value.checkList.size
+        val completedItems = uiState.value.checkList.filter { it.isComplete }.size
         return completedItems.div(totalItems.toFloat())
     }
 
-    fun deleteTask(){
-        viewModelScope.launch(Dispatchers.IO){
-            databaseRepository.deleteTask(_task.value!!.id)
+    private fun deleteTask() {
+        viewModelScope.launch(Dispatchers.IO) {
+            databaseRepository.deleteTask(uiState.value.task.id)
         }
     }
 }

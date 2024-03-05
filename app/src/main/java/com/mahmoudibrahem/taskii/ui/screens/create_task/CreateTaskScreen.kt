@@ -1,6 +1,5 @@
 package com.mahmoudibrahem.taskii.ui.screens.create_task
 
-import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -27,6 +26,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyItemScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,13 +39,12 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,7 +52,9 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -64,9 +65,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavController
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.mahmoudibrahem.taskii.R
-import com.mahmoudibrahem.taskii.model.Task
 import com.mahmoudibrahem.taskii.ui.theme.AppMainColor
 import com.mahmoudibrahem.taskii.ui.theme.AppSecondaryColor
 import com.mahmoudibrahem.taskii.ui.theme.SfDisplay
@@ -80,26 +81,71 @@ import com.maxkeppeler.sheets.clock.models.ClockSelection
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import java.time.LocalDate
-import java.time.LocalDateTime
 import java.time.LocalTime
+
+@Composable
+fun CreateTaskScreen(
+    viewModel: CreateTaskViewModel = hiltViewModel(),
+    onNavigateBack: () -> Unit,
+    taskId: Int = -1
+) {
+    val owner = LocalLifecycleOwner.current
+    val uiState by viewModel.uiState.collectAsState()
+    CreateTaskScreenContent(
+        uiState = uiState,
+        onCancelClicked = onNavigateBack,
+        onResetClicked = viewModel::onResetClicked,
+        onTaskNameChanged = viewModel::onTaskNameChanged,
+        onTaskDescriptionChanged = viewModel::onTaskDescriptionChanged,
+        onSelectDate = viewModel::onDeadlineDateSelected,
+        onSelectTime = viewModel::onDeadlineTimeSelected,
+        onExpandClicked = viewModel::onExpandClicked,
+        onCheckItemChanged = viewModel::onCheckItemTextChanged,
+        onDone = viewModel::onDone,
+        onTrailingIconClicked = viewModel::onDone,
+        onCreateBtnClicked = {
+            viewModel.onCreateBtnClicked()
+            onNavigateBack()
+        }
+    )
+
+    DisposableEffect(key1 = owner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_CREATE) {
+                if (taskId != -1) {
+                    viewModel.getTaskById(taskId)
+                    viewModel.getCheckListByTaskId(taskId)
+                }
+            }
+        }
+        owner.lifecycle.addObserver(observer)
+        onDispose {
+            owner.lifecycle.removeObserver(observer)
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CreateTaskScreen(
-    navController: NavController,
-    viewModel: CreateTaskViewModel = hiltViewModel()
+private fun CreateTaskScreenContent(
+    uiState: CreateTaskScreenUIState,
+    onCancelClicked: () -> Unit,
+    onResetClicked: () -> Unit,
+    onTaskNameChanged: (String) -> Unit,
+    onTaskDescriptionChanged: (String) -> Unit,
+    onSelectDate: (LocalDate) -> Unit,
+    onSelectTime: (LocalTime) -> Unit,
+    onCreateBtnClicked: () -> Unit,
+    onExpandClicked: () -> Unit,
+    onDone: (String) -> Unit,
+    onCheckItemChanged: (String) -> Unit,
+    onTrailingIconClicked: (String) -> Unit,
 ) {
-    val selectedDate by remember { mutableStateOf(LocalDate.now()) }
-    val selectedTime by remember { mutableStateOf(LocalTime.now()) }
+    val scope = rememberCoroutineScope()
     val calendarState = rememberUseCaseState()
     val clockState = rememberUseCaseState()
-    var taskName by remember { mutableStateOf("") }
-    var taskDescription by remember { mutableStateOf("") }
-    var date by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("") }
-    val checkList = remember { mutableStateListOf<String>() }
     val buttonColor = animateColorAsState(
-        targetValue = if (taskName.isNotEmpty() && taskDescription.isNotEmpty() && date.isNotEmpty()) AppMainColor else Color.LightGray,
+        targetValue = if (uiState.createButtonEnabled) AppMainColor else Color.LightGray,
         animationSpec = tween(1000, easing = LinearEasing),
         label = ""
     )
@@ -107,51 +153,180 @@ fun CreateTaskScreen(
     CalendarDialog(
         state = calendarState,
         config = CalendarConfig(yearSelection = true, monthSelection = true),
-        selection = CalendarSelection.Date {
-            date = it.toString()
+        selection = CalendarSelection.Date { date ->
+            onSelectDate(date)
         }
     )
 
     ClockDialog(
         state = clockState,
         selection = ClockSelection.HoursMinutes { hours, minutes ->
-            time = "$hours:$minutes"
+            onSelectTime(LocalTime.of(hours, minutes))
         }
     )
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(24.dp)
     ) {
-        Column(
-            modifier = Modifier.align(Alignment.TopCenter),
+
+        val arrowScale = animateFloatAsState(
+            targetValue = if (uiState.checkListExpanded) -1f else 1f,
+            label = ""
+        )
+
+        LazyColumn(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(bottom = 56.dp),
             verticalArrangement = Arrangement.Top,
             horizontalAlignment = Alignment.Start
         ) {
-            CreateTaskHeader(
-                onCancelClicked = { navController.navigateUp() },
-                onResetClicked = {
-                    taskName = ""
-                    taskDescription = ""
-                    date = ""
-                    time = ""
-                    checkList.clear()
-                },
-                isResetEnabled = taskName.isNotEmpty() || taskDescription.isNotEmpty() || date.isNotEmpty() || checkList.isNotEmpty()
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            DataEntrySection(
-                taskName = taskName,
-                onTaskNameChanged = { taskName = it },
-                taskDescription = taskDescription,
-                onTaskDescriptionChanged = { taskDescription = it },
-                date = date,
-                checkList = checkList,
-                calenderState = calendarState,
-                clockState = clockState,
-                time = time,
-                scope = rememberCoroutineScope()
-            )
+            item {
+                CreateTaskHeader(
+                    onCancelClicked = onCancelClicked,
+                    onResetClicked = onResetClicked,
+                    isResetEnabled = uiState.resetButtonEnabled
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                CreateTaskScreenTextField(
+                    value = uiState.taskName,
+                    onValueChanged = { onTaskNameChanged(it) },
+                    placeHolder = stringResource(R.string.tap_to_add_task_name),
+                    characterLimit = 50,
+                    height = 64.dp
+                )
+                Spacer(modifier = Modifier.height(40.dp))
+                CreateTaskScreenTextField(
+                    value = uiState.taskDescription,
+                    onValueChanged = { onTaskDescriptionChanged(it) },
+                    placeHolder = stringResource(R.string.tap_to_add_task_description),
+                    height = 120.dp,
+                    singleLine = false,
+                    characterLimit = 250
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                CreateTaskScreenTextField(
+                    value = uiState.deadlineDate,
+                    enabled = false,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        scope.launch { calendarState.show() }
+                    },
+                    placeHolder = stringResource(R.string.date_placeholder),
+                    leadingIcon = R.drawable.calendar_ic
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                CreateTaskScreenTextField(
+                    value = uiState.deadlineTime,
+                    enabled = false,
+                    modifier = Modifier.clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        scope.launch { clockState.show() }
+                    },
+                    placeHolder = stringResource(R.string.time_placeholder),
+                    leadingIcon = R.drawable.time_ic
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            item {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
+                        .background(color = Color(0xFFEAE9F6), shape = RoundedCornerShape(16.dp))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null
+                        ) {
+                            onExpandClicked()
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterStart),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.check_ic),
+                            contentDescription = null,
+                            modifier = Modifier.padding(start = 12.dp, end = 8.dp),
+                            tint = Color.Unspecified
+                        )
+                        Text(
+                            text = stringResource(R.string.check_list),
+                            color = Color(0xFF52465F),
+                            fontFamily = SfDisplay,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal,
+                            textAlign = TextAlign.Start
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.align(Alignment.CenterEnd),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (uiState.checkList.isEmpty()) "" else uiState.checkList.size.toString(),
+                            color = Color(0xFF52465F),
+                            fontFamily = SfDisplay,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Normal,
+                            textAlign = TextAlign.Start,
+                        )
+                        Icon(
+                            modifier = Modifier
+                                .padding(start = 8.dp, end = 12.dp)
+                                .graphicsLayer {
+                                    scaleY = arrowScale.value
+                                    scaleX = arrowScale.value
+                                },
+                            painter = painterResource(id = R.drawable.arrow_ic),
+                            contentDescription = null,
+                            tint = Color.Unspecified
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+
+            items(uiState.checkList.size) { index ->
+                AnimatedVisibility(
+                    visible = uiState.checkListExpanded,
+                    enter = scaleIn() + fadeIn(),
+                    exit = scaleOut() + fadeOut(),
+                    modifier = Modifier.padding(bottom = 8.dp)
+                ) {
+                    CheckListItem(item = uiState.checkList[index]) {
+                        uiState.checkList.removeAt(index)
+                    }
+                }
+            }
+
+            item {
+                AnimatedVisibility(
+                    visible = uiState.checkListExpanded,
+                    enter = scaleIn() + fadeIn(),
+                    exit = scaleOut() + fadeOut(),
+                    modifier = Modifier.padding(bottom = 60.dp)
+                ) {
+                    CreateTaskScreenTextField(
+                        value = uiState.checkItem,
+                        onValueChanged = onCheckItemChanged,
+                        placeHolder = stringResource(R.string.add_item),
+                        onDone = onDone,
+                        trailingIcon = R.drawable.check_icon,
+                        onTrailingIconClicked = onTrailingIconClicked
+                    )
+                }
+            }
         }
 
         Button(
@@ -161,20 +336,11 @@ fun CreateTaskScreen(
                 .height(48.dp)
                 .clip(RoundedCornerShape(16.dp)),
             colors = ButtonDefaults.buttonColors(containerColor = buttonColor.value),
-            enabled = taskName.isNotEmpty() && taskDescription.isNotEmpty() && date.isNotEmpty() && time.isNotEmpty() && checkList.isNotEmpty(),
-            onClick = {
-                val task = Task(
-                    name = taskName,
-                    description = taskDescription,
-                    deadline = LocalDateTime.of(selectedDate, selectedTime),
-                    progress = 0f
-                )
-                viewModel.createNewTask(task = task, checkList = checkList)
-                navController.navigateUp()
-            }
+            enabled = uiState.createButtonEnabled,
+            onClick = onCreateBtnClicked
         ) {
-            androidx.compose.material3.Text(
-                text = "Create",
+            Text(
+                text = stringResource(R.string.create),
                 fontFamily = SfDisplay,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
@@ -200,7 +366,7 @@ fun CreateTaskHeader(
     ) {
         IconButton(
             modifier = Modifier.align(Alignment.CenterStart),
-            onClick = { onCancelClicked() }
+            onClick = onCancelClicked
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.cancel_ic),
@@ -209,7 +375,7 @@ fun CreateTaskHeader(
             )
         }
         Text(
-            text = "Create Task",
+            text = stringResource(R.string.create_task),
             fontFamily = SfDisplay,
             fontWeight = FontWeight.Bold,
             fontSize = 20.sp,
@@ -218,7 +384,7 @@ fun CreateTaskHeader(
         )
         IconButton(
             modifier = Modifier.align(Alignment.CenterEnd),
-            onClick = { onResetClicked() }
+            onClick = onResetClicked
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.reset_ic),
@@ -232,12 +398,18 @@ fun CreateTaskHeader(
 @Composable
 fun DataEntrySection(
     taskName: String,
-    onTaskNameChanged: (String) -> Unit,
     taskDescription: String,
-    onTaskDescriptionChanged: (String) -> Unit,
     date: String,
     time: String,
+    isExpandList: Boolean,
+    checkItemText: String,
     checkList: MutableList<String>,
+    onTaskNameChanged: (String) -> Unit,
+    onTaskDescriptionChanged: (String) -> Unit,
+    onExpandClicked: () -> Unit,
+    onDone: (String) -> Unit,
+    onCheckItemChanged: (String) -> Unit,
+    onTrailingIconClicked: (String) -> Unit,
     calenderState: UseCaseState,
     clockState: UseCaseState,
     scope: CoroutineScope
@@ -245,50 +417,17 @@ fun DataEntrySection(
     Column(
         modifier = Modifier.fillMaxWidth()
     ) {
-        CreateTaskScreenTextField(
-            value = taskName,
-            onValueChanged = { onTaskNameChanged(it) },
-            placeHolder = "Tap to add task name",
-            characterLimit = 50,
-            height = 64.dp
+
+
+        AddCheckListSection(
+            checkList = checkList,
+            isExpandList = isExpandList,
+            checkItem = checkItemText,
+            onExpandClicked = onExpandClicked,
+            onCheckItemChanged = onCheckItemChanged,
+            onDone = onDone,
+            onTrailingIconClicked = onTrailingIconClicked
         )
-        Spacer(modifier = Modifier.height(40.dp))
-        CreateTaskScreenTextField(
-            value = taskDescription,
-            onValueChanged = { onTaskDescriptionChanged(it) },
-            placeHolder = "Tap to add task description",
-            height = 120.dp,
-            singleLine = false,
-            characterLimit = 250
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        CreateTaskScreenTextField(
-            value = date,
-            enabled = false,
-            modifier = Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                scope.launch { calenderState.show() }
-            },
-            placeHolder = "date...",
-            leadingIcon = R.drawable.calendar_ic
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        CreateTaskScreenTextField(
-            value = time,
-            enabled = false,
-            modifier = Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null
-            ) {
-                scope.launch { clockState.show() }
-            },
-            placeHolder = "time...",
-            leadingIcon = R.drawable.time_ic
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        AddCheckListSection(checkList = checkList)
     }
 }
 
@@ -296,16 +435,17 @@ fun DataEntrySection(
 @Composable
 fun AddCheckListSection(
     checkList: MutableList<String>,
+    isExpandList: Boolean,
+    onExpandClicked: () -> Unit,
+    checkItem: String,
+    onCheckItemChanged: (String) -> Unit,
+    onDone: ((String) -> Unit)?,
+    onTrailingIconClicked: (String) -> Unit
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    var isExpanded by remember { mutableStateOf(false) }
     val arrowScale = animateFloatAsState(
-        targetValue = if (isExpanded) -1f else 1f,
+        targetValue = if (isExpandList) -1f else 1f,
         label = ""
     )
-    var newItemValue by remember {
-        mutableStateOf("")
-    }
     Column {
         Box(
             modifier = Modifier
@@ -313,10 +453,10 @@ fun AddCheckListSection(
                 .height(52.dp)
                 .background(color = Color(0xFFEAE9F6), shape = RoundedCornerShape(16.dp))
                 .clickable(
-                    interactionSource = interactionSource,
+                    interactionSource = remember { MutableInteractionSource() },
                     indication = null
                 ) {
-                    isExpanded = !isExpanded
+                    onExpandClicked()
                 }
         ) {
             Row(
@@ -330,7 +470,7 @@ fun AddCheckListSection(
                     tint = Color.Unspecified
                 )
                 Text(
-                    text = "Check List",
+                    text = stringResource(R.string.check_list),
                     color = Color(0xFF52465F),
                     fontFamily = SfDisplay,
                     fontSize = 16.sp,
@@ -352,21 +492,21 @@ fun AddCheckListSection(
                     textAlign = TextAlign.Start,
                 )
                 Icon(
-                    painter = painterResource(id = R.drawable.arrow_ic),
-                    contentDescription = null,
-                    tint = Color.Unspecified,
                     modifier = Modifier
                         .padding(start = 8.dp, end = 12.dp)
                         .graphicsLayer {
                             scaleY = arrowScale.value
                             scaleX = arrowScale.value
-                        }
+                        },
+                    painter = painterResource(id = R.drawable.arrow_ic),
+                    contentDescription = null,
+                    tint = Color.Unspecified
                 )
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
         AnimatedVisibility(
-            visible = isExpanded,
+            visible = isExpandList,
             enter = scaleIn() + fadeIn(),
             exit = scaleOut() + fadeOut(),
             modifier = Modifier.padding(bottom = 60.dp)
@@ -374,29 +514,7 @@ fun AddCheckListSection(
             LazyColumn(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                items(checkList.size) { index ->
-                    CheckListItem(item = checkList[index]) {
-                        checkList.removeAt(index)
-                    }
-                }
-                item {
-                    CreateTaskScreenTextField(
-                        value = newItemValue,
-                        onValueChanged = { newItemValue = it },
-                        placeHolder = "Add item",
-                        onDone = {
-                            checkList.add(it)
-                            newItemValue = ""
-                        },
-                        trailingIcon = R.drawable.check_icon,
-                        onTrailingIconClicked = {
-                            if(it.isNotEmpty()){
-                                checkList.add(it)
-                                newItemValue = ""
-                            }
-                        }
-                    )
-                }
+
             }
         }
     }
@@ -419,6 +537,7 @@ fun LazyItemScope.CheckListItem(
             )
         )
     }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -440,10 +559,8 @@ fun LazyItemScope.CheckListItem(
             modifier = Modifier.align(Alignment.CenterStart)
         )
         IconButton(
-            onClick = {
-                onDeleteClicked()
-            },
-            modifier = Modifier.align(Alignment.CenterEnd)
+            modifier = Modifier.align(Alignment.CenterEnd),
+            onClick = onDeleteClicked
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.delete_ic),
@@ -455,9 +572,9 @@ fun LazyItemScope.CheckListItem(
     }
 }
 
-@SuppressLint("ModifierParameter")
 @Composable
 fun CreateTaskScreenTextField(
+    modifier: Modifier = Modifier,
     value: String,
     onValueChanged: (String) -> Unit = {},
     leadingIcon: Int? = null,
@@ -467,7 +584,6 @@ fun CreateTaskScreenTextField(
     height: Dp = 58.dp,
     characterLimit: Int = Int.MAX_VALUE,
     enabled: Boolean = true,
-    modifier: Modifier = Modifier,
     singleLine: Boolean = true,
     onDone: ((String) -> Unit)? = null
 ) {
