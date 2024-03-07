@@ -5,7 +5,7 @@ Taskii is a modern, slick, open-source Android task management app.
 
 Available on MediaFire Store and soon also on Google Play.
 
-<a href="https://www.mediafire.com/file/bditn8k04s7lmte/app-release.apk/file">
+<a href="https://www.mediafire.com/file/8cl8nh545syntfk/Taskii.apk/file">
   <img
     alt="Get it on MediaFire"
     height="80"
